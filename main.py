@@ -122,3 +122,4 @@ fail_prob = fail_count/traj_num
 print (fail_prob)
 print(fail_count)
 
+print(f_xt)
