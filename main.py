@@ -120,4 +120,5 @@ for traj_itr in range(traj_num):
        
 fail_prob = fail_count/traj_num
 print (fail_prob)
+print(fail_count)
 
