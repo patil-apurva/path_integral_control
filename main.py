@@ -36,7 +36,7 @@ e = 2
 
 G_u = np.array([[0, 0], [0, 0], [1, 0], [0, 1]])
 x0 = np.array([[-0.4], [-0.4], [0], [0]]) #initial position
-runs = 1000 #monte carlo runs
+runs = 100 #monte carlo runs
 traj_num = 10 #number of trajectories to plot
 
 lam = a*s2 #PDE linearization constant
