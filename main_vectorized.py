@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import math
+import torch
 
 rng = np.random.default_rng()
 
@@ -36,8 +37,8 @@ e = 2
 
 G_u = np.array([[0, 0], [0, 0], [1, 0], [0, 1]])
 x0 = np.array([[-0.4], [-0.4], [0], [0]]) #initial position
-runs = 1000 #monte carlo runs
-traj_num = 5 #number of trajectories to plot
+runs = 5 #monte carlo runs
+traj_num = 1 #number of trajectories to plot
 
 lam = a*s2 #PDE linearization constant
 k1 = -e/T 
@@ -62,41 +63,42 @@ for traj_itr in range(traj_num):
     safe_flag_traj = 1
 
     for idx in range(0, int(T/h)):
-        # t = idx*h
 
         eps_t_all = rng.normal(size=(2, runs)) #initial standard normal noise for all the MC trajectories  
         S_tau_all = np.zeros([1, runs]) #an array that stores S(tau) of each sample path starting at time t and state xt
 
-        for i in range(runs):
-            eps_t_prime = eps_t_all[:, i] #standard normal noise at t for the ith tau
-            eps_t_prime = eps_t_prime.reshape((2,1))
-            xt_prime = xt
-            f_xt_prime = f_xt
+        # for i in range(runs):
+        # eps_t_prime = eps_t_all[:, i] #standard normal noise at t for the ith tau
+        # eps_t_prime = eps_t_prime.reshape((2,1))
+        eps_t_prime = eps_t_all
+        xt_prime = xt
+        f_xt_prime = f_xt
 
-            S_tau = 0 #the cost-to-go of the state dependent cost of tau i
-            safe_flag_tau = 1
+        # S_tau = 0 #the cost-to-go of the state dependent cost of tau i
+        safe_flag_tau = np.ones((1, runs), dtype=bool)
+        prev_collision = np.zeros((1, runs), dtype=bool)
+        
 
-            for j in range(idx, int(T/h)): #this loop is to compute S(tau_i) 
-                # torch.norm2(xt_prime[:,:2]**2,dim=0)
-                # t_prime = j*h 
-                S_tau = S_tau + h*b*(np.linalg.norm(xt_prime[:2,:]))**2 #add the state dependent running cost
+        for j in range(idx, int(T/h)): #this loop is to compute S(tau_i) 
+            # torch.norm2(xt_prime[:,:2]**2,dim=0)
+            # t_prime = j*h 
+            S_tau_all = S_tau_all + h*b*(np.linalg.norm(xt_prime[:2,:]))**2 #add the state dependent running cost
 
-                #move tau ahead
-                dummy_prime = s*eps_t_prime*math.sqrt(h)
-                xt_prime = xt_prime + f_xt_prime*h + np.matmul(G_u, dummy_prime)
-    
-                if (((xt_prime[0]>=xR1) and (xt_prime[0]<=xS1) and (xt_prime[1]>=yR1) and (xt_prime[1]<=yS1)) or ((xt_prime[0]>=xR2) and (xt_prime[0]<=xS2) and (xt_prime[1]>=yR2) and (xt_prime[1]<=yS2)) or ((xt_prime[0]<=xP) or (xt_prime[0]>=xQ) or (xt_prime[1]<=yP) or (xt_prime[1]>=yQ))):
-                    S_tau = S_tau + eta #add the boundary cost to S_tau
-                    safe_flag_tau = 0
-                    break #end this tau
+            #move tau ahead
+            dummy_prime = s*eps_t_prime*math.sqrt(h)
+            xt_prime = xt_prime + f_xt_prime*h + np.matmul(G_u, dummy_prime)
 
-                eps_t_prime = rng.normal(size=(2, 1)) #standard normal noise at new t_prime. Will be used in the next iteration 
-                f_xt_prime = np.array([k1*xt_prime[0] + xt_prime[2]*np.cos(xt_prime[3]), k1*xt_prime[1] + xt_prime[2]*np.sin(xt_prime[3]), k2*xt_prime[2], k3*xt_prime[3]]) #f_xt_prime at new t_prime. Will be used in the next iteration 
+            collision = ((xt_prime[0,:]>=xR1) & (xt_prime[0,:]<=xS1) & (xt_prime[1,:]>=yR1) & (xt_prime[1,:]<=yS1)) | ((xt_prime[0,:]>=xR2) & (xt_prime[0,:]<=xS2) & (xt_prime[1,:]>=yR2) & (xt_prime[1,:]<=yS2)) | ((xt_prime[0,:]<=xP) | (xt_prime[0,:]>=xQ) | (xt_prime[1,:]<=yP) | (xt_prime[1,:]>=yQ))
+            S_tau_all = S_tau_all + eta*(~prev_collision * collision) #add the boundary cost to S_tau
+            safe_flag_tau = ~(prev_collision + collision)
+            collision = prev_collision
+                # break #end this tau
 
-            if safe_flag_tau==1: #if tau has not collided 
-                S_tau = S_tau + d*(np.linalg.norm(xt_prime[:2,:]))**2 #add the terminal cost to S_tau
+            eps_t_prime = rng.normal(size=(2, runs)) #standard normal noise at new t_prime. Will be used in the next iteration 
+            f_xt_prime = np.array([k1*xt_prime[0,:] + xt_prime[2,:]*np.cos(xt_prime[3,:]), k1*xt_prime[1] + xt_prime[2]*np.sin(xt_prime[3]), k2*xt_prime[2], k3*xt_prime[3]]) #f_xt_prime at new t_prime. Will be used in the next iteration 
 
-            S_tau_all[0,i] = S_tau #save the cost of tau i
+        
+        S_tau_all = S_tau_all + d*((np.linalg.norm(xt_prime[:2,:]))**2)*safe_flag_tau #add the terminal cost to S_tau
 
         denom_i = np.exp(-S_tau_all/lam) #(size: (1 X runs))
         numer = np.matmul(eps_t_all, denom_i.transpose()) #(size: (2 X 1))
